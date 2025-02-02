@@ -1,34 +1,48 @@
-from flask import Flask,render_template,request
-from tensorflow.keras.utils import load_img
-from keras_preprocessing.image import img_to_array
+import os
+from flask import Flask, render_template, request
+from tensorflow.keras.utils import load_img, img_to_array
 from keras.models import load_model
 import numpy as np
-# from gevent.pywsgi import WSGIServer
 
+app = Flask(_name_)
+MODEL_PATH = 'models/resnet50_pneu_model.keras'
 
-app = Flask(__name__)
-Model_Path= 'models/pneu_cnn_model.h5'
-model = load_model(Model_Path)
+# Load the model
+model = load_model(MODEL_PATH)
 
-@app.route('/',methods=['GET'])
-def hello_world():
+# Ensure the static directory exists
+STATIC_DIR = './static'
+if not os.path.exists(STATIC_DIR):
+    os.makedirs(STATIC_DIR)
+
+@app.route('/', methods=['GET'])
+def index():
     return render_template('index.html')
 
-@app.route('/',methods=['POST','GET'])
+@app.route('/', methods=['POST'])
 def predict():
-    imagefile= request.files["imagefile"]
-    image_path ='./static/' + imagefile.filename
+    # Save the uploaded image
+    imagefile = request.files["imagefile"]
+    image_path = os.path.join(STATIC_DIR, imagefile.filename)
     imagefile.save(image_path)
-    img=load_img(image_path,target_size=(500,500),color_mode='grayscale')
-    x=img_to_array(img)
-    x=x/255
-    x=np.expand_dims(x, axis=0)
-    classes=model.predict(x)
-    result1=classes[0][0]
-    result2='Negative'
-    if result1>=0.5:
-        result2='Positive'
-    classification ='%s (%.2f%%)' %(result2,result1*100)
-    return render_template('index.html',prediction=classification,imagePath=image_path)
-if __name__ == '__main__':
-    app.run(port=5000,debug=True)
+
+    # Resize the image to (224, 224) and ensure it's in RGB format
+    img = load_img(image_path, target_size=(224, 224))  # ResNet50 expects (224, 224, 3)
+    x = img_to_array(img)  # Convert image to array
+    x = x / 255.0  # Normalize pixel values to [0, 1]
+    x = np.expand_dims(x, axis=0)  # Add batch dimension
+
+    # Predict using the model
+    classes = model.predict(x)
+    result = classes[0][0]
+
+    # Interpret the prediction result
+    classification = "Positive" if result >= 0.5 else "Negative"
+    confidence = result * 100 if result >= 0.5 else (1 - result) * 100
+    output = f"{classification} ({confidence:.2f}%)"
+
+    # Return the prediction result to the web page
+    return render_template('index.html', prediction=output, imagePath=image_path)
+
+if _name_ == '_main_':
+    app.run(port=5000, debug=True)
